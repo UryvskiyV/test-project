@@ -1,0 +1,48 @@
+# Docker Compose for Telegram LLM Bot v0.4.0
+
+services:
+  telegram-llm-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: telegram-llm-bot
+    restart: unless-stopped
+    
+    # Environment variables (use .env.production for production)
+    env_file:
+      - .env.production
+    
+    # Optional: Mount volumes for persistence
+    volumes:
+      # Logs volume (optional)
+      - ./logs:/app/logs
+      
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    
+    # Network configuration
+    networks:
+      - bot-network
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  bot-network:
+    driver: bridge
+
+volumes:
+  logs:
+    driver: local
