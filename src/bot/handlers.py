@@ -4,6 +4,12 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from src.dialog.manager import (
+    get_context_summary,
+    get_optimized_context_for_llm,
+    reset_user_context,
+    save_user_interaction,
+)
 from src.llm.service import LLMError, send_to_llm
 from src.logging_config import get_logger
 
@@ -31,7 +37,8 @@ async def handle_start(message: Message) -> None:
         "Теперь я умею отвечать на ваши вопросы с помощью искусственного интеллекта!\n\n"
         "Доступные команды:\n"
         "/start - Показать это сообщение\n"
-        "/help - Показать справку\n\n"
+        "/help - Показать справку\n"
+        "/reset - Сбросить контекст диалога\n\n"
         "Просто напишите мне любой вопрос, и я постараюсь помочь! 🚀"
     )
 
@@ -51,26 +58,65 @@ async def handle_help(message: Message) -> None:
     help_text = (
         "📚 Справка по боту\n\n"
         "🔹 /start - Перезапустить бота и показать приветствие\n"
-        "🔹 /help - Показать это сообщение с описанием команд\n\n"
-        "ℹ️ Текущая версия: v0.2.0 (Интеграция с LLM)\n\n"
+        "🔹 /help - Показать это сообщение с описанием команд\n"
+        "🔹 /reset - Сбросить контекст диалога\n\n"
+        "ℹ️ Текущая версия: v0.3.0 (Управление контекстом диалога)\n\n"
         "🤖 Теперь бот может:\n"
         "• Отвечать на любые вопросы с помощью ИИ\n"
-        "• Помогать с различными задачами\n"
-        "• Поддерживать диалог на русском и других языках\n\n"
+        "• Запоминать контекст диалога для лучшего понимания\n"
+        "• Поддерживать диалог на русском и других языках\n"
+        "• Сбрасывать контекст по команде /reset\n\n"
         "Просто напишите любое сообщение, и я отвечу!"
     )
 
     await message.answer(help_text)
 
 
-@router.message()
-async def handle_user_message(message: Message) -> None:
-    """Handle user messages and send them to LLM.
+@router.message(Command("reset"))
+async def handle_reset(message: Message) -> None:
+    """Handle /reset command to clear dialog context.
 
     Args:
         message: Telegram message object
     """
-    user_id = message.from_user.id if message.from_user else "unknown"
+    user_id = str(message.from_user.id) if message.from_user else "unknown"
+    logger.info(f"User {user_id} requested context reset")
+
+    try:
+        # Get context summary before reset
+        summary = get_context_summary(user_id)
+        
+        # Reset user context
+        reset_user_context(user_id)
+        
+        reset_text = (
+            "🔄 Контекст диалога сброшен!\n\n"
+            f"📊 Было удалено:\n"
+            f"• Сообщений: {summary['total_messages']}\n"
+            f"• Примерно токенов: {summary['estimated_tokens']}\n\n"
+            "Теперь можете начать новый диалог. "
+            "Я не буду помнить предыдущие сообщения."
+        )
+        
+        await message.answer(reset_text)
+        logger.info(f"Context reset completed for user {user_id}")
+        
+    except Exception as e:
+        logger.error(f"Error resetting context for user {user_id}: {e}")
+        await message.answer(
+            "❌ Произошла ошибка при сбросе контекста. "
+            "Попробуйте ещё раз или обратитесь к администратору."
+        )
+
+
+@router.message()
+async def handle_user_message(message: Message) -> None:
+    """Handle user messages with context and send them to LLM.
+
+    Args:
+        message: Telegram message object
+    """
+    user_id = str(message.from_user.id) if message.from_user else "unknown"
     message_text = message.text or ""
 
     # Skip non-text messages
@@ -84,13 +130,21 @@ async def handle_user_message(message: Message) -> None:
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
 
     try:
-        # Send message to LLM
-        llm_response = send_to_llm(message_text)
+        # Get dialog context for this user
+        context_history = get_optimized_context_for_llm(user_id)
+        
+        # Send message to LLM with context
+        llm_response = send_to_llm(message_text, history=context_history)
+
+        # Save the interaction to dialog storage
+        save_user_interaction(user_id, message_text, llm_response)
 
         # Send LLM response back to user
         await message.answer(llm_response)
 
-        logger.info(f"LLM response sent to user {user_id}")
+        # Log context information
+        context_summary = get_context_summary(user_id)
+        logger.info(f"LLM response sent to user {user_id} with context: {context_summary['total_messages']} messages")
 
     except LLMError as e:
         logger.error(f"LLM error for user {user_id}: {e}")
