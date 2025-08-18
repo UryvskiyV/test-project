@@ -7,16 +7,40 @@ from src.logging_config import get_logger
 logger = get_logger(__name__)
 
 # Default system prompt for the assistant
-DEFAULT_SYSTEM_PROMPT = """Ты - полезный помощник в Telegram боте. Ты отвечаешь на вопросы пользователей на русском языке, даешь полезные советы и помогаешь решать различные задачи.
+DEFAULT_SYSTEM_PROMPT = """Ты - умный и полезный ИИ-помощник в Telegram боте. Твоя задача - быть максимально полезным, отвечая на вопросы пользователей и помогая им решать различные задачи.
 
-Правила поведения:
-- Отвечай кратко и по существу
-- Используй дружелюбный тон
-- Если не знаешь ответ, честно скажи об этом
-- Не придумывай факты
-- Помогай пользователю наилучшим образом
+🎯 ОСНОВНЫЕ ПРИНЦИПЫ:
+- Отвечай точно и информативно, но кратко
+- Используй дружелюбный и профессиональный тон
+- Структурируй ответы для лучшего восприятия
+- Если не знаешь ответ - честно признайся и предложи альтернативы
+- Никогда не выдумывай факты или данные
 
-Если пользователь пишет на другом языке, отвечай на том же языке."""
+📝 ФОРМАТИРОВАНИЕ:
+- Используй эмодзи для лучшего визуального восприятия (умеренно)
+- Применяй форматирование Markdown когда это уместно
+- Разбивай длинные ответы на пункты или абзацы
+- Выделяй ключевую информацию
+
+🌍 ЯЗЫКИ:
+- По умолчанию отвечай на русском языке
+- Если пользователь пишет на другом языке, адаптируйся к его языку
+- Поддерживай многоязычное общение
+
+🧠 КОНТЕКСТ:
+- Помни предыдущие сообщения в диалоге
+- Учитывай контекст при формулировке ответов
+- Развивай тему разговора логично
+- Задавай уточняющие вопросы если нужно больше информации
+
+🚀 СПЕЦИАЛИЗАЦИЯ:
+- Программирование и технологии
+- Обучение и образование  
+- Повседневные вопросы и советы
+- Творческие задачи
+- Анализ и решение проблем
+
+Будь полезным, умным и приятным собеседником!"""
 
 
 def create_prompt(
@@ -126,4 +150,68 @@ def create_assistant_message(content: str) -> dict[str, str]:
         Formatted assistant message
     """
     return {"role": "assistant", "content": content}
+
+
+def create_adaptive_system_prompt(history: list[dict[str, Any]] | None = None) -> str:
+    """Create an adaptive system prompt based on conversation history.
+    
+    Args:
+        history: Previous conversation history
+        
+    Returns:
+        Adaptive system prompt text
+    """
+    base_prompt = DEFAULT_SYSTEM_PROMPT
+    
+    if not history:
+        return base_prompt
+    
+    # Analyze conversation context
+    context_hints = []
+    
+    # Check if conversation involves programming/technical topics
+    tech_keywords = ["код", "программ", "python", "javascript", "bug", "api", "database", "алгоритм"]
+    if _contains_keywords(history, tech_keywords):
+        context_hints.append("\n💻 ТЕКУЩИЙ КОНТЕКСТ: Техническое обсуждение - предоставляй детальные технические решения с примерами кода когда уместно.")
+    
+    # Check if conversation involves learning/education
+    learning_keywords = ["учить", "изучать", "понять", "объясни", "как работает", "что такое"]
+    if _contains_keywords(history, learning_keywords):
+        context_hints.append("\n📚 ТЕКУЩИЙ КОНТЕКСТ: Обучающий диалог - используй пошаговые объяснения, примеры и проверь понимание.")
+    
+    # Check if conversation involves problem-solving
+    problem_keywords = ["проблема", "ошибка", "не работает", "помоги", "решить", "исправить"]
+    if _contains_keywords(history, problem_keywords):
+        context_hints.append("\n🔧 ТЕКУЩИЙ КОНТЕКСТ: Решение проблемы - структурируй диагностику проблемы и предложи конкретные шаги решения.")
+    
+    # Check conversation length for context management
+    if len(history) > 10:
+        context_hints.append("\n💭 КОНТЕКСТ: Длинный диалог - кратко резюмируй ключевые моменты если нужно, избегай повторений.")
+    
+    if context_hints:
+        return base_prompt + "\n".join(context_hints)
+    
+    return base_prompt
+
+
+def _contains_keywords(history: list[dict[str, Any]], keywords: list[str]) -> bool:
+    """Check if conversation history contains specific keywords.
+    
+    Args:
+        history: Conversation history
+        keywords: List of keywords to search for
+        
+    Returns:
+        True if any keywords found in recent messages
+    """
+    # Check last 5 messages for relevance
+    recent_messages = history[-5:] if len(history) > 5 else history
+    
+    for message in recent_messages:
+        if message.get("role") in ("user", "assistant"):
+            content = message.get("content", "").lower()
+            if any(keyword.lower() in content for keyword in keywords):
+                return True
+    
+    return False
 

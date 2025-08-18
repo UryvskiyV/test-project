@@ -8,6 +8,7 @@ from src.dialog.storage import (
     get_user_dialog_messages,
     reset_user_dialog,
 )
+from src.llm.prompts import create_adaptive_system_prompt
 from src.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -150,14 +151,14 @@ def get_context_summary(user_id: str) -> dict[str, Any]:
     return summary
 
 
-def get_optimized_context_for_llm(user_id: str) -> list[dict[str, str]]:
-    """Get optimized context for LLM with automatic trimming.
+def get_optimized_context_for_llm(user_id: str) -> tuple[list[dict[str, str]], str]:
+    """Get optimized context for LLM with automatic trimming and adaptive prompt.
     
     Args:
         user_id: Telegram user ID
         
     Returns:
-        Optimized list of messages for LLM
+        Tuple of (optimized message list, adaptive system prompt)
     """
     # Get recent messages
     context = prepare_context_for_llm(user_id)
@@ -165,7 +166,11 @@ def get_optimized_context_for_llm(user_id: str) -> list[dict[str, str]]:
     # Trim if needed
     optimized_context = trim_context_if_needed(context)
     
-    logger.debug("Optimized context for user %s: %d messages, ~%d tokens", 
-                user_id, len(optimized_context), estimate_context_size(optimized_context))
+    # Create adaptive system prompt based on conversation history
+    adaptive_prompt = create_adaptive_system_prompt(optimized_context)
     
-    return optimized_context
+    logger.debug("Optimized context for user %s: %d messages, ~%d tokens, adaptive prompt: %s", 
+                user_id, len(optimized_context), estimate_context_size(optimized_context),
+                "yes" if adaptive_prompt != create_adaptive_system_prompt() else "no")
+    
+    return optimized_context, adaptive_prompt

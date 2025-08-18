@@ -70,7 +70,7 @@ class TestBotHandlers:
         assert "Справка по боту" in call_args
         assert "/start" in call_args
         assert "/help" in call_args
-        assert "v0.3.0" in call_args
+        assert "v0.4.0" in call_args
 
     @pytest.mark.asyncio
     @patch("src.bot.handlers.save_user_interaction")
@@ -91,7 +91,7 @@ class TestBotHandlers:
         mock_user.id = 123456789
         mock_message.from_user = mock_user
         
-        mock_get_context.return_value = [{"role": "user", "content": "Previous message"}]
+        mock_get_context.return_value = ([{"role": "user", "content": "Previous message"}], "test_adaptive_prompt")
         mock_send_to_llm.return_value = "I'm doing well, thank you for asking!"
         mock_get_summary.return_value = {"total_messages": 3}
 
@@ -100,10 +100,11 @@ class TestBotHandlers:
         # Check that context was retrieved
         mock_get_context.assert_called_once_with("123456789")
 
-        # Check that LLM was called with context
+        # Check that LLM was called with context and adaptive prompt
         mock_send_to_llm.assert_called_once_with(
             "Hello, how are you?", 
-            history=[{"role": "user", "content": "Previous message"}]
+            history=[{"role": "user", "content": "Previous message"}],
+            system_prompt="test_adaptive_prompt"
         )
 
         # Check that interaction was saved
@@ -145,7 +146,7 @@ class TestBotHandlers:
         # Check that error message was sent
         mock_message.answer.assert_called_once()
         call_args = mock_message.answer.call_args[0][0]
-        assert "произошла ошибка" in call_args
+        assert "Произошла ошибка" in call_args
 
     @pytest.mark.asyncio
     @patch("src.bot.handlers.reset_user_context")

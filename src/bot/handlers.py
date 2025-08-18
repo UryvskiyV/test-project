@@ -10,7 +10,7 @@ from src.dialog.manager import (
     reset_user_context,
     save_user_interaction,
 )
-from src.llm.service import LLMError, send_to_llm
+from src.llm.service import LLMError, LLMRateLimitError, LLMTimeoutError, LLMConnectionError, send_to_llm
 from src.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -60,10 +60,12 @@ async def handle_help(message: Message) -> None:
         "🔹 /start - Перезапустить бота и показать приветствие\n"
         "🔹 /help - Показать это сообщение с описанием команд\n"
         "🔹 /reset - Сбросить контекст диалога\n\n"
-        "ℹ️ Текущая версия: v0.3.0 (Управление контекстом диалога)\n\n"
+        "ℹ️ Текущая версия: v0.4.0 (Улучшенная устойчивость и адаптивность)\n\n"
         "🤖 Теперь бот может:\n"
         "• Отвечать на любые вопросы с помощью ИИ\n"
         "• Запоминать контекст диалога для лучшего понимания\n"
+        "• Адаптировать стиль общения в зависимости от темы разговора\n"
+        "• Устойчиво работать при сбоях API с умными повторными попытками\n"
         "• Поддерживать диалог на русском и других языках\n"
         "• Сбрасывать контекст по команде /reset\n\n"
         "Просто напишите любое сообщение, и я отвечу!"
@@ -130,11 +132,11 @@ async def handle_user_message(message: Message) -> None:
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
 
     try:
-        # Get dialog context for this user
-        context_history = get_optimized_context_for_llm(user_id)
+        # Get dialog context and adaptive prompt for this user
+        context_history, adaptive_prompt = get_optimized_context_for_llm(user_id)
         
-        # Send message to LLM with context
-        llm_response = send_to_llm(message_text, history=context_history)
+        # Send message to LLM with context and adaptive prompt
+        llm_response = send_to_llm(message_text, history=context_history, system_prompt=adaptive_prompt)
 
         # Save the interaction to dialog storage
         save_user_interaction(user_id, message_text, llm_response)
@@ -146,11 +148,37 @@ async def handle_user_message(message: Message) -> None:
         context_summary = get_context_summary(user_id)
         logger.info(f"LLM response sent to user {user_id} with context: {context_summary['total_messages']} messages")
 
+    except LLMRateLimitError as e:
+        logger.error(f"Rate limit error for user {user_id}: {e}")
+        error_response = (
+            "⏱️ Извините, сервис ИИ временно перегружен.\n\n"
+            "Пожалуйста, подождите немного и попробуйте снова.\n"
+            "Обычно это занимает 1-2 минуты."
+        )
+        await message.answer(error_response)
+
+    except LLMTimeoutError as e:
+        logger.error(f"Timeout error for user {user_id}: {e}")
+        error_response = (
+            "⏰ Время ожидания ответа от ИИ истекло.\n\n"
+            "Возможно, ваш запрос слишком сложный или сервис временно медленно работает.\n"
+            "Попробуйте переформулировать вопрос или повторить запрос."
+        )
+        await message.answer(error_response)
+
+    except LLMConnectionError as e:
+        logger.error(f"Connection error for user {user_id}: {e}")
+        error_response = (
+            "🌐 Проблемы с подключением к сервису ИИ.\n\n"
+            "Проверьте подключение к интернету и попробуйте снова.\n"
+            "Если проблема повторяется, сервис может быть временно недоступен."
+        )
+        await message.answer(error_response)
+
     except LLMError as e:
         logger.error(f"LLM error for user {user_id}: {e}")
-
         error_response = (
-            "😔 Извините, произошла ошибка при обработке вашего сообщения.\n\n"
+            "😔 Произошла ошибка при обработке вашего сообщения.\n\n"
             "Возможные причины:\n"
             "• Проблемы с подключением к ИИ\n"
             "• Временная недоступность сервиса\n\n"

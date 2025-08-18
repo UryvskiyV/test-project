@@ -5,6 +5,7 @@ from typing import Any
 
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
+from openai import APIError, RateLimitError, APIConnectionError, APITimeoutError
 
 from src.llm.client import create_openrouter_client, get_llm_config
 from src.llm.prompts import create_prompt, validate_history
@@ -23,6 +24,14 @@ class LLMConnectionError(LLMError):
 
 class LLMValidationError(LLMError):
     """Exception for LLM validation issues."""
+
+
+class LLMRateLimitError(LLMError):
+    """Exception for LLM rate limit issues."""
+
+
+class LLMTimeoutError(LLMError):
+    """Exception for LLM timeout issues."""
 
 
 def send_to_llm(
@@ -78,6 +87,9 @@ def send_to_llm(
 
         return response_text
 
+    except (LLMRateLimitError, LLMTimeoutError, LLMConnectionError):
+        # Re-raise specific LLM errors without wrapping
+        raise
     except Exception as e:
         logger.error("LLM request failed: %s", e)
         raise LLMError(f"LLM request failed: {e}") from e
@@ -89,7 +101,7 @@ def _make_llm_request_with_retry(
     config: dict[str, Any],
     max_retries: int = 3,
 ) -> ChatCompletion:
-    """Make LLM request with exponential backoff retry.
+    """Make LLM request with smart retry logic based on error type.
 
     Args:
         client: OpenAI client instance
@@ -101,7 +113,10 @@ def _make_llm_request_with_retry(
         LLM response
 
     Raises:
-        Exception: If all retries fail
+        LLMRateLimitError: If rate limit is exceeded
+        LLMTimeoutError: If request times out
+        LLMConnectionError: If connection fails
+        LLMError: For other API errors
     """
     last_exception = None
 
@@ -112,22 +127,91 @@ def _make_llm_request_with_retry(
                 **config,
             )
 
-        except Exception as e:
+        except RateLimitError as e:
             last_exception = e
-
             if attempt < max_retries:
-                delay = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                # Longer delay for rate limits
+                delay = min(60, 10 * (2 ** attempt))  # 10s, 20s, 40s, max 60s
                 logger.warning(
-                    "LLM request attempt %d failed, retrying in %ds: %s",
+                    "Rate limit hit on attempt %d, retrying in %ds: %s",
                     attempt + 1,
                     delay,
                     e,
                 )
                 time.sleep(delay)
             else:
-                logger.error("All LLM request attempts failed")
+                logger.error("Rate limit exceeded after all attempts")
+                raise LLMRateLimitError("API rate limit exceeded") from e
 
-    raise last_exception
+        except (APIConnectionError, APITimeoutError) as e:
+            last_exception = e
+            if attempt < max_retries:
+                # Standard delay for connection/timeout issues
+                delay = 2 ** attempt  # 1s, 2s, 4s
+                logger.warning(
+                    "Connection/timeout error on attempt %d, retrying in %ds: %s",
+                    attempt + 1,
+                    delay,
+                    e,
+                )
+                time.sleep(delay)
+            else:
+                error_type = "timeout" if isinstance(e, APITimeoutError) else "connection"
+                logger.error(f"API {error_type} error after all attempts")
+                if isinstance(e, APITimeoutError):
+                    raise LLMTimeoutError("API request timed out") from e
+                else:
+                    raise LLMConnectionError("API connection failed") from e
+
+        except APIError as e:
+            last_exception = e
+            # For other API errors, only retry if it's potentially temporary
+            if attempt < max_retries and _is_retryable_api_error(e):
+                delay = 2 ** attempt
+                logger.warning(
+                    "API error on attempt %d, retrying in %ds: %s",
+                    attempt + 1,
+                    delay,
+                    e,
+                )
+                time.sleep(delay)
+            else:
+                logger.error("Non-retryable API error or max attempts reached: %s", e)
+                raise LLMError(f"API error: {e}") from e
+
+        except Exception as e:
+            last_exception = e
+            logger.error("Unexpected error on attempt %d: %s", attempt + 1, e)
+            # Don't retry unexpected errors
+            raise LLMError(f"Unexpected error: {e}") from e
+
+    # This should not be reached due to exception handling above
+    raise LLMError("Max retry attempts exceeded") from last_exception
+
+
+def _is_retryable_api_error(error: APIError) -> bool:
+    """Check if an API error is potentially retryable.
+    
+    Args:
+        error: The API error to check
+        
+    Returns:
+        True if the error might be temporary and worth retrying
+    """
+    # Common temporary error indicators
+    retryable_status_codes = {500, 502, 503, 504}  # Server errors
+    retryable_error_types = {"server_error", "timeout", "connection_error"}
+    
+    # Check status code
+    if hasattr(error, 'status_code') and error.status_code in retryable_status_codes:
+        return True
+    
+    # Check error message for common temporary issues
+    error_msg = str(error).lower()
+    if any(err_type in error_msg for err_type in retryable_error_types):
+        return True
+    
+    return False
 
 
 def _extract_response_text(response: ChatCompletion) -> str:

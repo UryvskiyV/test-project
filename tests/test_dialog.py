@@ -357,10 +357,12 @@ class TestDialogManager:
         add_user_message(user_id, "Hello")
         add_assistant_message(user_id, "Hi there!")
         
-        # Get optimized context
-        context = get_optimized_context_for_llm(user_id)
+        # Get optimized context (now returns tuple)
+        context, adaptive_prompt = get_optimized_context_for_llm(user_id)
         
         assert len(context) == 2
         assert context[0]["role"] == "user"
         assert context[1]["role"] == "assistant"
         assert "timestamp" not in context[0]
+        assert isinstance(adaptive_prompt, str)
+        assert "умный и полезный ИИ-помощник" in adaptive_prompt
