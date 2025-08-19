@@ -5,6 +5,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 from src.bot.handlers import router
+from src.bot.health import set_bot_status, update_telegram_check
 from src.config import TELEGRAM_BOT_TOKEN
 from src.logging_config import get_logger
 
@@ -56,6 +57,10 @@ async def start_bot() -> None:
         # Get bot info
         bot_info = await bot.get_me()
         logger.info(f"Bot started: @{bot_info.username} ({bot_info.full_name})")
+        
+        # Update health status
+        set_bot_status("running")
+        update_telegram_check()
 
         # Start polling
         logger.info("Starting polling...")
@@ -63,7 +68,9 @@ async def start_bot() -> None:
 
     except Exception as e:
         logger.error(f"Error starting bot: {e}")
+        set_bot_status("error")
         raise
     finally:
         logger.info("Bot stopped")
+        set_bot_status("stopped")
         await bot.session.close()

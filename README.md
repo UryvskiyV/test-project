@@ -72,7 +72,7 @@ OPENROUTER_API_KEY=your_openrouter_api_key_here
 make run
 ```
 
-#### Docker развертывание (Рекомендуется для production)
+#### Docker развертывание (Локально)
 
 1. Настройка environment файла:
    ```bash
@@ -95,11 +95,22 @@ make run
    ./scripts/docker-rebuild.sh
    ```
 
-3. Проверка статуса:
-   ```bash
-   docker-compose ps
-   docker stats telegram-llm-bot
-   ```
+#### ☁️ Облачное развертывание (Рекомендуется)
+
+**🚀 Быстрый деплой на Render.com:**
+
+1. **Регистрация:** [render.com](https://render.com) → Sign up with GitHub
+2. **Создание сервиса:** New + → Web Service → выбрать репозиторий
+3. **Настройка:** Environment: Docker, Auto-Deploy: Yes
+4. **Environment Variables:** Добавить `TELEGRAM_BOT_TOKEN` и `OPENROUTER_API_KEY`
+5. **Деплой:** Create Web Service → ждать 5-10 минут
+
+**Готово!** Бот работает в облаке 24/7 с автоматическими обновлениями.
+
+📖 **Подробные инструкции:**
+- [Быстрый старт](doc/guides/quick_cloud_deploy.md) (5 минут)
+- [Полное руководство](doc/guides/render_deployment.md) (детальное)
+- [Анализ облачных сервисов](doc/cloud_deployment_analysis.md)
 
 ## Разработка
 

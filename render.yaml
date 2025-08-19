@@ -1,0 +1,54 @@
+services:
+  - type: web
+    name: telegram-llm-bot
+    runtime: docker
+    repo: https://github.com/viktoruryvskij/telegram-llm-bot.git # TODO: Update with actual repo URL
+    branch: main
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    
+    # Environment variables (will be set in Render dashboard)
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DEBUG
+        value: "false"
+      - key: LLM_MODEL
+        value: anthropic/claude-3-haiku-20240307
+      - key: LLM_TEMPERATURE
+        value: "0.7"
+      - key: LLM_MAX_TOKENS
+        value: "2048"
+      - key: PORT
+        value: "8000"
+    
+    # Secrets (to be added via Render dashboard)
+    # - TELEGRAM_BOT_TOKEN
+    # - OPENROUTER_API_KEY
+    
+    # Resource allocation
+    plan: free # 750 hours/month, 512MB RAM, shared CPU
+    
+    # Health check
+    healthCheckPath: /health # We'll implement this endpoint
+    
+    # Auto-deploy on git push
+    autoDeploy: true
+    
+    # Build settings
+    buildFilter:
+      paths:
+        - src/**
+        - Dockerfile
+        - requirements.txt
+        - pyproject.toml
+      ignoredPaths:
+        - README.md
+        - doc/**
+        - tests/**
+        - .gitignore
+    
+    # Startup configuration
+    startCommand: "python src/main.py"

@@ -1,0 +1,67 @@
+name: Deploy to Render
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+    
+    - name: Create virtual environment
+      run: uv venv
+    
+    - name: Install dependencies
+      run: uv pip install -r requirements.txt
+    
+    - name: Install development dependencies
+      run: |
+        uv pip install pytest>=7.4.0
+        uv pip install pytest-asyncio>=0.21.0
+        uv pip install black>=23.0.0
+        uv pip install ruff>=0.1.0
+        uv pip install tiktoken>=0.5.0
+    
+    - name: Lint with ruff
+      run: uv run ruff check .
+    
+    - name: Format check with black
+      run: uv run black --check .
+    
+    - name: Test with pytest
+      run: uv run pytest tests/ -v
+      env:
+        TELEGRAM_BOT_TOKEN: "test_token"
+        OPENROUTER_API_KEY: "test_key"
+    
+    - name: Test Docker build
+      run: |
+        docker build -t telegram-llm-bot .
+        echo "Docker build successful"
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Deploy to Render
+      run: |
+        echo "🚀 Deployment triggered to Render.com"
+        echo "Render will automatically pull and deploy the latest code from main branch"
+        echo "Monitor deployment at: https://dashboard.render.com"

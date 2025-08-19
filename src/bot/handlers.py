@@ -11,6 +11,7 @@ from src.dialog.manager import (
     save_user_interaction,
 )
 from src.llm.service import LLMError, LLMRateLimitError, LLMTimeoutError, LLMConnectionError, send_to_llm
+from src.bot.health import update_telegram_check
 from src.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -43,6 +44,7 @@ async def handle_start(message: Message) -> None:
     )
 
     await message.answer(welcome_text)
+    update_telegram_check()  # Track successful Telegram API interaction
 
 
 @router.message(Command("help"))
@@ -72,6 +74,7 @@ async def handle_help(message: Message) -> None:
     )
 
     await message.answer(help_text)
+    update_telegram_check()  # Track successful Telegram API interaction
 
 
 @router.message(Command("reset"))
@@ -101,6 +104,7 @@ async def handle_reset(message: Message) -> None:
         )
         
         await message.answer(reset_text)
+        update_telegram_check()  # Track successful Telegram API interaction
         logger.info(f"Context reset completed for user {user_id}")
         
     except Exception as e:
@@ -143,6 +147,7 @@ async def handle_user_message(message: Message) -> None:
 
         # Send LLM response back to user
         await message.answer(llm_response)
+        update_telegram_check()  # Track successful Telegram API interaction
 
         # Log context information
         context_summary = get_context_summary(user_id)
